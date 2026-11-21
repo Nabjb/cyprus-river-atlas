@@ -1,3 +1,13 @@
+"""Download the waterway data for the whole island of Cyprus from OpenStreetMap.
+
+Writes three files:
+- data/waterways_raw.json        rivers and streams (used by every other script)
+- data/other_waterways_raw.json  canals, drains and ditches (rivers can flow into them)
+- data/coastline_raw.json        the coastline (to know which waterways reach the sea)
+
+Every way is saved with its tags, the IDs of its nodes (points) and their
+coordinates, so later scripts can tell which pieces touch each other.
+"""
 import json
 import time
 from datetime import datetime, timedelta, timezone
@@ -18,12 +28,28 @@ BBOX = "34.4,32.2,35.75,34.65"
 # Reject servers whose copy of OpenStreetMap is older than this.
 MAX_AGE = timedelta(days=7)
 
+# Output file -> list of (label, Overpass filter). Each filter is one request,
+# so no single request is too big for the server.
+DATASETS = {
+    "data/waterways_raw.json": [
+        ("rivers", 'way["waterway"="river"]'),
+        ("streams", 'way["waterway"="stream"]'),
+    ],
+    "data/other_waterways_raw.json": [
+        ("canals, drains and ditches", 'way["waterway"~"^(canal|drain|ditch)$"]'),
+    ],
+    "data/coastline_raw.json": [
+        ("coastline", 'way["natural"="coastline"]'),
+    ],
+}
 
-def build_query(kind):
+
+def build_query(selector):
+    # "out body geom" returns the tags, the node IDs and the coordinates of every way
     return f"""
 [out:json][timeout:180];
-way["waterway"="{kind}"]({BBOX});
-out tags geom;
+{selector}({BBOX});
+out body geom;
 """
 
 
@@ -56,24 +82,26 @@ def fetch(query):
 
 
 def main():
-    elements = []
-    for kind in ("river", "stream"):
-        print(f"Downloading waterway={kind} ...")
-        data, url = fetch(build_query(kind))
-        ways = data["elements"]
-        named = sum(1 for w in ways if "name" in w["tags"])
-        date = data["osm3s"]["timestamp_osm_base"]
-        print(f"  {len(ways)} pieces, {named} named")
-        print(f"  server: {url}")
-        print(f"  data as of: {date}")
-        elements.extend(ways)
-
     Path("data").mkdir(exist_ok=True)
-    out = Path("data/waterways_raw.json")
-    out.write_text(json.dumps({"elements": elements}), encoding="utf-8")
 
-    size_mb = out.stat().st_size / 1_000_000
-    print(f"Saved {len(elements)} pieces to {out} ({size_mb:.1f} MB)")
+    for path, parts in DATASETS.items():
+        elements, dates = [], []
+        for label, selector in parts:
+            print(f"Downloading {label} ...")
+            data, url = fetch(build_query(selector))
+            ways = data["elements"]
+            named = sum(1 for w in ways if "name" in w.get("tags", {}))
+            date = data["osm3s"]["timestamp_osm_base"]
+            print(f"  {len(ways)} pieces, {named} named")
+            print(f"  server: {url}")
+            print(f"  data as of: {date}")
+            elements.extend(ways)
+            dates.append(date)
+
+        out = Path(path)
+        out.write_text(json.dumps({"osm_date": min(dates), "elements": elements}), encoding="utf-8")
+        size_mb = out.stat().st_size / 1_000_000
+        print(f"Saved {len(elements)} pieces to {out} ({size_mb:.1f} MB)\n")
 
 
 if __name__ == "__main__":
