@@ -4,6 +4,7 @@ Writes three files:
 - data/waterways_raw.json        rivers and streams (used by every other script)
 - data/other_waterways_raw.json  canals, drains and ditches (rivers can flow into them)
 - data/coastline_raw.json        the coastline (to know which waterways reach the sea)
+- data/water_bodies_raw.json     lakes and reservoirs (streams can end in them)
 
 Every way is saved with its tags, the IDs of its nodes (points) and their
 coordinates, so later scripts can tell which pieces touch each other.
@@ -40,6 +41,11 @@ DATASETS = {
     ],
     "data/coastline_raw.json": [
         ("coastline", 'way["natural"="coastline"]'),
+    ],
+    "data/water_bodies_raw.json": [
+        ("lakes and reservoirs (simple shapes)", 'way["natural"="water"]'),
+        ("lakes and reservoirs (old reservoir tag)", 'way["landuse"="reservoir"]'),
+        ("lakes and reservoirs (multi-part shapes)", 'relation["natural"="water"]'),
     ],
 }
 
